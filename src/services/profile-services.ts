@@ -172,3 +172,35 @@ export async function getProfilesByUuid(req: Request, res: Response) {
   }
 }
 
+export async function getProfileByUsername(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
+  try {
+    const { username } = req.query;
+
+    // Validar que se haya proporcionado un nombre de usuario
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ message: 'Missing or invalid "username" query parameter' });
+    }
+
+    // Buscar el primer perfil con el nombre de usuario
+    const snapshot = await db
+      .collection('profiles')
+      .where('userName', '==', username) // Búsqueda exacta
+      .limit(1) // Solo el primer resultado
+      .get();
+
+    // Si no hay resultados
+    if (snapshot.empty) {
+      return res.status(404).json({ message: 'No profile found with the given username' });
+    }
+
+    // Obtener el primer documento
+    const doc = snapshot.docs[0];
+    const profile = { id: doc.id, ...doc.data() };
+
+    return res.status(200).json(profile);
+  } catch (error) {
+    console.error('Error fetching profile by username:', error);
+    return res.status(500).json({ error: 'Error fetching profile by username', details: error });
+  }
+}
+

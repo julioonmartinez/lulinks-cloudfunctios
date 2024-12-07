@@ -42,3 +42,7 @@ export async function deleteProfile(req: Request, res: Response) {
 export async function getProfilesByUuid(req: Request, res: Response) {
   await profileService.getProfilesByUuid(req, res);
 }
+
+export async function handleGetProfileByUsername(req: Request, res: Response) {
+  await profileService.getProfileByUsername(req, res);
+}
