@@ -5,22 +5,34 @@ const db = admin.firestore();
 
 export async function createStyleProfile(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   try {
-    const profileId = req.params.profileId; // Tomar el `profileId` de los params
-    const styleProfile = req.body; // Tomar el objeto del estilo del body
+    const { profileId } = req.params;
+    const styleProfile = req.body;
 
     // Validación del parámetro `profileId`
     if (!profileId) {
       return res.status(400).json({ message: 'Missing profileId' });
     }
 
-    // Crear el estilo como subdocumento dentro del perfil
+    // Validar que el usuario esté autenticado
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'User is not authenticated',
+      });
+    }
+
+    // Agregar el campo `createdBy` con el UID del usuario autenticado
+    styleProfile.createdBy = req.user.uid;
+    styleProfile.dateCreate = new Date();
+
+    // Crear el estilo
     const docRef = await db
       .collection('profiles')
       .doc(profileId)
       .collection('styles')
       .add(styleProfile);
 
-    // Respuesta de éxito
     return res.status(201).json({
       message: 'Style profile created successfully',
       id: docRef.id,
@@ -28,8 +40,6 @@ export async function createStyleProfile(req: Request, res: Response): Promise<R
     });
   } catch (error) {
     console.error('Error creating style profile:', error);
-
-    // Respuesta de error
     return res.status(500).json({ error: 'Error creating style profile', details: error });
   }
 }
@@ -97,49 +107,85 @@ export async function updateStyleProfile(req: Request, res: Response): Promise<R
     const { profileId, styleId } = req.params;
     const updatedStyleProfile = req.body;
 
-    // Validación de `profileId` y `styleId`
-    if (!profileId || !styleId) {
-      return res.status(400).json({ message: 'Missing profileId or styleId in params' });
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'User is not authenticated',
+      });
     }
 
-    await db
-      .collection('profiles')
-      .doc(profileId)
-      .collection('styles')
-      .doc(styleId)
-      .update(updatedStyleProfile);
+    // Obtener el estilo
+    const styleRef = db.collection('profiles').doc(profileId).collection('styles').doc(styleId);
+    const styleDoc = await styleRef.get();
+
+    if (!styleDoc.exists) {
+      return res.status(404).json({ message: 'Style profile not found' });
+    }
+
+    const styleData = styleDoc.data();
+
+    // Validar que el usuario sea el creador del estilo
+    if (styleData?.createdBy !== req.user.uid) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to update this style',
+      });
+    }
+
+    // Actualizar el estilo
+    await styleRef.update({
+      ...updatedStyleProfile,
+      lastUpdate: new Date(),
+    });
 
     return res.status(200).json({ message: 'Style profile updated successfully' });
   } catch (error) {
     console.error('Error updating style profile:', error);
-
-    // Manejo de errores
     return res.status(500).json({ error: 'Error updating style profile', details: error });
   }
 }
+
 
 
 export async function deleteStyleProfile(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   try {
     const { profileId, styleId } = req.params;
 
-    // Validación de `profileId` y `styleId`
-    if (!profileId || !styleId) {
-      return res.status(400).json({ message: 'Missing profileId or styleId in params' });
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'User is not authenticated',
+      });
     }
 
-    await db
-      .collection('profiles')
-      .doc(profileId)
-      .collection('styles')
-      .doc(styleId)
-      .delete();
+    // Obtener el estilo
+    const styleRef = db.collection('profiles').doc(profileId).collection('styles').doc(styleId);
+    const styleDoc = await styleRef.get();
+
+    if (!styleDoc.exists) {
+      return res.status(404).json({ message: 'Style profile not found' });
+    }
+
+    const styleData = styleDoc.data();
+
+    // Validar que el usuario sea el creador del estilo
+    if (styleData?.createdBy !== req.user.uid) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to delete this style',
+      });
+    }
+
+    // Eliminar el estilo
+    await styleRef.delete();
 
     return res.status(200).json({ message: 'Style profile deleted successfully' });
   } catch (error) {
     console.error('Error deleting style profile:', error);
-
-    // Manejo de errores
     return res.status(500).json({ error: 'Error deleting style profile', details: error });
   }
 }

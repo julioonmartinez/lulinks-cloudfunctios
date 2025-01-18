@@ -3,5 +3,6 @@ export interface Profile {
     uuid: string;
     status: boolean;
     createAt?: Date;
+    createdBy?:string
     userName:string,
   }

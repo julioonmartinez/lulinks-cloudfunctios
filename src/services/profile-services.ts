@@ -8,65 +8,101 @@ const collectionProfiles = "profiles";
 /**
  * Service to create a new profile.
  */
-export async function createProfile(req: Request, res: Response) {
+export async function createProfile(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   const newProfile: Profile = req.body;
 
   try {
-    // Validación: Verificar si el usuario ya existe
+    // Validar que el usuario esté autenticado
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "UNAUTHORIZED",
+        message: "User is not authenticated",
+      });
+    }
+
+    // Normalizar el nombre de usuario
+    if (!newProfile.userName || typeof newProfile.userName !== "string") {
+      return res.status(400).json({
+        status: "error",
+        code: "VALIDATION_ERROR",
+        message: "Invalid or missing 'userName' field",
+      });
+    }
+
+    newProfile.userName = newProfile.userName.trim().toLowerCase();
+
+    // Verificar si el nombre de usuario ya existe
     const profilesRef = db.collection("profiles");
     const querySnapshot = await profilesRef.where("userName", "==", newProfile.userName).get();
 
     if (!querySnapshot.empty) {
       return res.status(400).json({
-        message: "User already exists",
+        status: "error",
+        code: "USER_EXISTS",
+        message: "UserName already exists",
       });
     }
 
-    // Añadir valores generados automáticamente
-    newProfile.createAt = new Date(); // Fecha de creación
-    newProfile.status = true; // Estado activo por defecto
+    // Agregar el campo `createdBy` con el ID del usuario autenticado
+    newProfile.createdBy = req.user.uid;
+    newProfile.createAt = new Date();
+    newProfile.status = true;
 
-    // Crear el nuevo perfil
+    // Crear el perfil
     const docRef = await profilesRef.add(newProfile);
 
-    // Devolver el perfil completo incluyendo el ID generado
-    const createdProfile = { id: docRef.id, ...newProfile };
-
     return res.status(201).json({
+      status: "success",
       message: "Profile created successfully",
-      profile: createdProfile,
+      data: { id: docRef.id, ...newProfile },
     });
   } catch (error) {
     console.error("Error creating profile:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return res.status(500).json({
-      error: "Error creating profile",
-      details: error,
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error creating profile",
+      details: errorMessage,
     });
   }
 }
 
 
+
 /**
  * Service to fetch a profile by ID.
  */
-export async function getProfileById(req: Request, res: Response): Promise<Response> {
+export async function getProfileById(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   const profileId = req.params.id;
 
   try {
-    const profileRef = db.collection("profiles").doc(profileId);
+    const profileRef = db.collection(collectionProfiles).doc(profileId);
     const doc = await profileRef.get();
 
     if (!doc.exists) {
-      return res.status(404).json({ message: "Profile not found" }); // Retorno explícito
+      return res.status(404).json({
+        status: "error",
+        code: "PROFILE_NOT_FOUND",
+        message: "Profile not found",
+      });
     }
 
-    return res.status(200).json({ id: doc.id, ...doc.data() }); // Retorno explícito
+    return res.status(200).json({
+      status: "success",
+      message: "Profile fetched successfully",
+      data: { id: doc.id, ...doc.data() },
+    });
   } catch (error) {
     console.error("Error fetching profile:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return res.status(500).json({
-      error: "Error fetching profile",
-      details: error,
-    }); // Retorno explícito
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error fetching profile",
+      details: errorMessage,
+    });
   }
 }
 
@@ -75,7 +111,7 @@ export async function getProfileById(req: Request, res: Response): Promise<Respo
 /**
  * Service to fetch all profiles.
  */
-export async function getAllProfiles(req: Request, res: Response) {
+export async function getAllProfiles(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   try {
     const snapshot = await db.collection(collectionProfiles).get();
     const profiles = snapshot.docs.map((doc) => ({
@@ -83,12 +119,19 @@ export async function getAllProfiles(req: Request, res: Response) {
       ...doc.data(),
     }));
 
-    res.status(200).json(profiles);
+    return res.status(200).json({
+      status: "success",
+      message: "Profiles fetched successfully",
+      data: profiles,
+    });
   } catch (error) {
     console.error("Error fetching profiles:", error);
-    res.status(500).json({
-      error: "Error fetching profiles",
-      details: error,
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error fetching profiles",
+      details: errorMessage,
     });
   }
 }
@@ -96,36 +139,121 @@ export async function getAllProfiles(req: Request, res: Response) {
 /**
  * Service to update a profile.
  */
-export async function updateProfile(req: Request, res: Response) {
+export async function updateProfile(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   const { id } = req.params;
   const updatedProfile: Partial<Profile> = req.body;
 
   try {
-    await db.collection(collectionProfiles).doc(id).update(updatedProfile);
-    res.status(200).json({ message: "Profile updated successfully" });
+    // Validar que el usuario esté autenticado
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "UNAUTHORIZED",
+        message: "User is not authenticated",
+      });
+    }
+
+    // Obtener el perfil para validar la propiedad
+    const profileRef = db.collection(collectionProfiles).doc(id);
+    const profileDoc = await profileRef.get();
+
+    if (!profileDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        code: "PROFILE_NOT_FOUND",
+        message: "Profile not found",
+      });
+    }
+
+    const profileData = profileDoc.data();
+
+    // Validar que el usuario autenticado sea el propietario
+    if (profileData?.createdBy !== req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "FORBIDDEN",
+        message: "You do not have permission to update this profile",
+      });
+    }
+
+    // Actualizar el perfil
+    await profileRef.update({
+      ...updatedProfile,
+      lastUpdate: new Date(),
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Profile updated successfully",
+    });
   } catch (error) {
     console.error("Error updating profile:", error);
-    res.status(500).json({
-      error: "Error updating profile",
-      details: error,
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error updating profile",
+      details: errorMessage,
     });
   }
 }
 
+
+
 /**
  * Service to delete a profile.
  */
-export async function deleteProfile(req: Request, res: Response) {
+export async function deleteProfile(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
   const { id } = req.params;
 
   try {
-    await db.collection(collectionProfiles).doc(id).delete();
-    res.status(200).json({ message: "Profile deleted successfully" });
+    // Validar que el usuario esté autenticado
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "UNAUTHORIZED",
+        message: "User is not authenticated",
+      });
+    }
+
+    // Obtener el perfil para validar la propiedad
+    const profileRef = db.collection(collectionProfiles).doc(id);
+    const profileDoc = await profileRef.get();
+
+    if (!profileDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        code: "PROFILE_NOT_FOUND",
+        message: "Profile not found",
+      });
+    }
+
+    const profileData = profileDoc.data();
+
+    // Validar que el usuario autenticado sea el propietario
+    if (profileData?.createdBy !== req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "FORBIDDEN",
+        message: "You do not have permission to delete this profile",
+      });
+    }
+
+    // Eliminar el perfil
+    await profileRef.delete();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Profile deleted successfully",
+    });
   } catch (error) {
     console.error("Error deleting profile:", error);
-    res.status(500).json({
-      error: "Error deleting profile",
-      details: error,
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error deleting profile",
+      details: errorMessage,
     });
   }
 }
@@ -133,41 +261,39 @@ export async function deleteProfile(req: Request, res: Response) {
 /**
  * Service to fetch all profiles by UUID.
  */
-export async function getProfilesByUuid(req: Request, res: Response) {
-  const uuid = req.query.uuid as string; // Obtener el UUID de los parámetros de consulta
+export async function getProfilesByUuid(req: Request, res: Response): Promise<Response<any, Record<string, any>>> {
+  const uuid = req.query.uuid as string;
 
   if (!uuid) {
-    return res.status(400).json({ error: "UUID is required" });
+    return res.status(400).json({
+      status: "error",
+      code: "VALIDATION_ERROR",
+      message: "UUID is required",
+    });
   }
 
   try {
-    // Buscar perfiles que coincidan con el UUID
-    const profilesRef = db.collection("profiles");
+    const profilesRef = db.collection(collectionProfiles);
     const querySnapshot = await profilesRef.where("uuid", "==", uuid).get();
 
-    // Si no hay perfiles, devuelve una lista vacía
-    if (querySnapshot.empty) {
-      return res.status(200).json({
-        message: "No profiles found for the given UUID",
-        profiles: [],
-      });
-    }
-
-    // Extraer y devolver datos de los documentos encontrados
     const profiles = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
 
     return res.status(200).json({
+      status: "success",
       message: "Profiles fetched successfully",
-      profiles,
+      data: profiles,
     });
   } catch (error) {
-    console.error("Error fetching profiles:", error);
+    console.error("Error fetching profiles by UUID:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return res.status(500).json({
-      error: "Internal server error",
-      details: error,
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error fetching profiles by UUID",
+      details: errorMessage,
     });
   }
 }
@@ -176,31 +302,44 @@ export async function getProfileByUsername(req: Request, res: Response): Promise
   try {
     const { username } = req.query;
 
-    // Validar que se haya proporcionado un nombre de usuario
-    if (!username || typeof username !== 'string') {
-      return res.status(400).json({ message: 'Missing or invalid "username" query parameter' });
+    if (!username || typeof username !== "string") {
+      return res.status(400).json({
+        status: "error",
+        code: "VALIDATION_ERROR",
+        message: "Missing or invalid 'username' query parameter",
+      });
     }
 
-    // Buscar el primer perfil con el nombre de usuario
     const snapshot = await db
-      .collection('profiles')
-      .where('userName', '==', username) // Búsqueda exacta
-      .limit(1) // Solo el primer resultado
+      .collection(collectionProfiles)
+      .where("userName", "==", username.toLowerCase().trim())
+      .limit(1)
       .get();
 
-    // Si no hay resultados
     if (snapshot.empty) {
-      return res.status(404).json({ message: 'No profile found with the given username' });
+      return res.status(404).json({
+        status: "error",
+        code: "PROFILE_NOT_FOUND",
+        message: "No profile found with the given username",
+      });
     }
 
-    // Obtener el primer documento
-    const doc = snapshot.docs[0];
-    const profile = { id: doc.id, ...doc.data() };
+    const profile = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
 
-    return res.status(200).json(profile);
+    return res.status(200).json({
+      status: "success",
+      message: "Profile fetched successfully",
+      data: profile,
+    });
   } catch (error) {
-    console.error('Error fetching profile by username:', error);
-    return res.status(500).json({ error: 'Error fetching profile by username', details: error });
+    console.error("Error fetching profile by username:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error fetching profile by username",
+      details: errorMessage,
+    });
   }
 }
 

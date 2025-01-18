@@ -7,6 +7,7 @@ import {
     getActiveWidgets,
     updateWidget,
     deleteWidget,
+    getWidgetById,
   } from '../services/widgets-service';
   
   export async function handleCreateWidget(req: Request, res: Response) {
@@ -31,6 +32,9 @@ import {
   
   export async function handleDeleteWidget(req: Request, res: Response) {
     await deleteWidget(req, res);
+  }
+  export const handleGetWidgetById = async (req: Request, res: Response) => {
+    await getWidgetById(req, res);
   }
   
   
