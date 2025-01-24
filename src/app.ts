@@ -45,6 +45,7 @@ import {
   handleUpdateUser,
   handleDeleteUser,
 } from "./handlers/users-handlers";
+import { handleGetStatistics, handleUpdateStatistics } from "./handlers/statistics-handlers";
 
 const app = express();
 app.use(express.json());
@@ -96,4 +97,7 @@ app.delete('/api/users/:userId', authenticate, handleDeleteUser); // Eliminar un
 // Public routes (no authentication required)
 app.get('/api/profiles/by-username', handleGetProfileByUsername); // Ruta pública para buscar perfiles por nombre de usuario
 
+//statistics
+app.post("/api/statistics/update", handleUpdateStatistics); // Ruta para actualizar estadísticas
+app.get("/api/statistics", handleGetStatistics); // Ruta para obtener estadísticas
 export default app;
