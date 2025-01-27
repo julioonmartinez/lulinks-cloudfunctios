@@ -343,3 +343,63 @@ export async function getProfileByUsername(req: Request, res: Response): Promise
   }
 }
 
+
+ 
+export async function upgradeToPremium(req: Request, res: Response): Promise<Response> {
+  const { id } = req.params;
+
+  try {
+    // Validar que el usuario esté autenticado
+    if (!req.user || !req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "UNAUTHORIZED",
+        message: "User is not authenticated",
+      });
+    }
+
+    // Obtener el perfil para validar la propiedad
+    const profileRef = db.collection("profiles").doc(id);
+    const profileDoc = await profileRef.get();
+
+    if (!profileDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        code: "PROFILE_NOT_FOUND",
+        message: "Profile not found",
+      });
+    }
+
+    const profileData = profileDoc.data() as Profile;
+
+    // Validar que el usuario autenticado sea el propietario
+    if (profileData.createdBy !== req.user.uid) {
+      return res.status(403).json({
+        status: "error",
+        code: "FORBIDDEN",
+        message: "You do not have permission to update this profile",
+      });
+    }
+
+    // Actualizar el perfil a premium
+    await profileRef.update({
+      isPremium: true,
+      premiumSince: new Date(),
+      lastUpdate: new Date(),
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Profile upgraded to premium successfully",
+    });
+  } catch (error) {
+    console.error("Error upgrading profile to premium:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Error upgrading profile to premium",
+      details: errorMessage,
+    });
+  }
+}

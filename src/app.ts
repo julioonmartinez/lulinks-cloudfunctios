@@ -18,6 +18,7 @@ import {
   deleteProfile,
   getProfilesByUuid,
   handleGetProfileByUsername,
+  upgradeToPremiumHandler,
 } from "./handlers/profile-handlers";
 
 import {
@@ -100,4 +101,8 @@ app.get('/api/profiles/by-username', handleGetProfileByUsername); // Ruta públi
 //statistics
 app.post("/api/statistics/update", handleUpdateStatistics); // Ruta para actualizar estadísticas
 app.get("/api/statistics", handleGetStatistics); // Ruta para obtener estadísticas
+
+//premium
+app.patch("/profiles/:id/upgrade-to-premium", authenticate, upgradeToPremiumHandler);
+
 export default app;

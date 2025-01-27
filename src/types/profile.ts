@@ -5,4 +5,7 @@ export interface Profile {
     createAt?: Date;
     createdBy?:string
     userName:string,
+    isPremium?:boolean,
+    datePremiumUser:Date,
+    username?:string,
   }

@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, RequestHandler, Response } from "express";
 import * as profileService from "../services/profile-services";
 
 /**
@@ -46,3 +46,16 @@ export async function getProfilesByUuid(req: Request, res: Response) {
 export async function handleGetProfileByUsername(req: Request, res: Response) {
   await profileService.getProfileByUsername(req, res);
 }
+
+export const upgradeToPremiumHandler: RequestHandler= async (req, res) => {
+  try {
+    await profileService.upgradeToPremium(req, res);
+  } catch (error) {
+    console.error("Error in upgradeToPremiumHandler:", error);
+    res.status(500).json({
+      status: "error",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "An unexpected error occurred",
+    });
+  }
+};
